@@ -26,8 +26,7 @@
 #define IS_RGBW false
 #define ENDERECO_DISPLAY 0x3C
 
-SemaphoreHandle_t semEntrada;
-SemaphoreHandle_t semSaida;
+SemaphoreHandle_t semContagem;
 SemaphoreHandle_t semReset;
 SemaphoreHandle_t mutexDisplay;
 
@@ -76,7 +75,7 @@ void atualizar_display(const char* msg){
         ssd1306_rect(&ssd, 2, 2, 128 - 4, 64 - 4, true, false);
         ssd1306_rect(&ssd, 3, 3, 128 - 6, 64 - 6, true, false);
         char buffer[32];
-        sprintf(buffer, "Usuarios: %d", contador);
+        sprintf(buffer, "Clientes: %d", contador);
         ssd1306_draw_string(&ssd, msg, 10, 10);
         ssd1306_draw_string(&ssd, buffer, 10, 30);
         ssd1306_send_data(&ssd);
@@ -107,59 +106,66 @@ bool debounce_botao(uint gpio){
 
 void gpio_irq_handler(uint gpio, uint32_t events){
     BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-    if(gpio == BOTAO_A && debounce_botao(BOTAO_A)){
-        xSemaphoreGiveFromISR(semEntrada, &xHigherPriorityTaskWoken);
-    }else if(gpio == BOTAO_B && debounce_botao(BOTAO_B)){
-        xSemaphoreGiveFromISR(semSaida, &xHigherPriorityTaskWoken);
-    }else if(gpio == BOTAO_JOYSTICK && debounce_botao(BOTAO_JOYSTICK)){
+    if (gpio == BOTAO_JOYSTICK && debounce_botao(BOTAO_JOYSTICK)) {
         xSemaphoreGiveFromISR(semReset, &xHigherPriorityTaskWoken);
     }
     portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 }
 
 void vTaskEntrada(void *param){
+    bool ultimo_estado = true;
     while(1){
-        if(xSemaphoreTake(semEntrada, portMAX_DELAY) == pdTRUE){
-            if(contador < MAX_PESSOAS){
+        bool estado_atual = gpio_get(BOTAO_A);
+        if(!estado_atual && ultimo_estado){ // Pressionado
+            if (contador < MAX_PESSOAS && xSemaphoreTake(semContagem, 0) == pdTRUE){
                 contador++;
                 gpio_put(LED_G, 1);
-                beep(1, 400);   //Beep longo ao entrar
+                beep(1, 400);
                 gpio_put(LED_G, 0);
                 atualizar_display("Entrada feita!");
             }else{
                 atualizar_display("Local cheio!");
-                beep(1, 100);   //Beep curto ao tentar entrar com o sistema cheio
+                beep(1, 100);
             }
-            vTaskDelay(pdMS_TO_TICKS(300));
+            vTaskDelay(pdMS_TO_TICKS(300));  // debounce
         }
+        ultimo_estado = estado_atual;
+        vTaskDelay(pdMS_TO_TICKS(20));
     }
 }
 
 void vTaskSaida(void *param){
+    bool ultimo_estado = true;
     while(1){
-        if(xSemaphoreTake(semSaida, portMAX_DELAY) == pdTRUE){
+        bool estado_atual = gpio_get(BOTAO_B);
+        if (!estado_atual && ultimo_estado){ // Pressionado
             if(contador > 0){
                 contador--;
-                for(int i = 0; i < 3; i++){ //Beep curto 3 vezes ao sair
-                    gpio_put(LED_R, 1);
-                    beep(1, 100);
-                    gpio_put(LED_R, 0);
+                xSemaphoreGive(semContagem);
+                for(int i = 0; i < 3; i++){
+                    gpio_put(LED_R, 1); beep(1, 100); gpio_put(LED_R, 0);
                     vTaskDelay(pdMS_TO_TICKS(100));
                 }
                 atualizar_display("Saida feita!");
             }else{
                 atualizar_display("Local vazio!");
-                beep(1, 100);   //Beep curto ao tentar sair com o sistema vazio 
+                beep(1, 100);
             }
-            vTaskDelay(pdMS_TO_TICKS(300));
+            vTaskDelay(pdMS_TO_TICKS(300));  // debounce
         }
+        ultimo_estado = estado_atual;
+        vTaskDelay(pdMS_TO_TICKS(20));
     }
 }
+
 
 void vTaskReset(void *param){
     while(1){
         if(xSemaphoreTake(semReset, portMAX_DELAY) == pdTRUE){
-            contador = 0;
+            while(contador > 0){
+                xSemaphoreGive(semContagem);
+                contador--;
+            }
             gpio_put(LED_B, 1);
             beep(2, 300);
             atualizar_display("Reset feito!");
@@ -200,13 +206,10 @@ int main(){
     ssd1306_draw_string(&ssd, "RU CONTROLLER!", 12, 40);
     ssd1306_send_data(&ssd);
 
-    semEntrada = xSemaphoreCreateCounting(25, 0);
-    semSaida = xSemaphoreCreateCounting(25, 0);
+    semContagem = xSemaphoreCreateCounting(MAX_PESSOAS, MAX_PESSOAS);
     semReset = xSemaphoreCreateBinary();
     mutexDisplay = xSemaphoreCreateMutex();
 
-    gpio_set_irq_enabled_with_callback(BOTAO_A, GPIO_IRQ_EDGE_FALL, true, &gpio_irq_handler);
-    gpio_set_irq_enabled_with_callback(BOTAO_B, GPIO_IRQ_EDGE_FALL, true, &gpio_irq_handler);
     gpio_set_irq_enabled_with_callback(BOTAO_JOYSTICK, GPIO_IRQ_EDGE_FALL, true, &gpio_irq_handler);
 
     xTaskCreate(vTaskEntrada, "Entrada", 256, NULL, 1, NULL);
