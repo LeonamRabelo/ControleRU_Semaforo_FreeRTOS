@@ -70,6 +70,11 @@ void init_perifericos(){
 void atualizar_display(const char* msg){
     if(xSemaphoreTake(mutexDisplay, pdMS_TO_TICKS(200))){
         ssd1306_fill(&ssd, false);
+        //Borda
+        ssd1306_rect(&ssd, 0, 0, 128, 64, true, false);
+        ssd1306_rect(&ssd, 1, 1, 128 - 2, 64 - 2, true, false);
+        ssd1306_rect(&ssd, 2, 2, 128 - 4, 64 - 4, true, false);
+        ssd1306_rect(&ssd, 3, 3, 128 - 6, 64 - 6, true, false);
         char buffer[32];
         sprintf(buffer, "Usuarios: %d", contador);
         ssd1306_draw_string(&ssd, msg, 10, 10);
@@ -122,7 +127,7 @@ void vTaskEntrada(void *param){
                 gpio_put(LED_G, 0);
                 atualizar_display("Entrada feita!");
             }else{
-                atualizar_display("Capacidade cheia!");
+                atualizar_display("Local cheio!");
                 beep(1, 100);   //Beep curto ao tentar entrar com o sistema cheio
             }
             vTaskDelay(pdMS_TO_TICKS(300));
@@ -144,7 +149,7 @@ void vTaskSaida(void *param){
                 atualizar_display("Saida feita!");
             }else{
                 atualizar_display("Local vazio!");
-                beep(1, 100);   //Beep curto ao tentar sair com o sistema vazio
+                beep(1, 100);   //Beep curto ao tentar sair com o sistema vazio 
             }
             vTaskDelay(pdMS_TO_TICKS(300));
         }
@@ -185,8 +190,14 @@ int main(){
     init_perifericos();
 
     ssd1306_fill(&ssd, false);
-    ssd1306_draw_string(&ssd, "Bem-vindo!", 10, 10);
-    ssd1306_draw_string(&ssd, "Controle RU", 10, 30);
+    //Borda
+    ssd1306_rect(&ssd, 0, 0, 128, 64, true, false);
+    ssd1306_rect(&ssd, 1, 1, 128 - 2, 64 - 2, true, false);
+    ssd1306_rect(&ssd, 2, 2, 128 - 4, 64 - 4, true, false);
+    ssd1306_rect(&ssd, 3, 3, 128 - 6, 64 - 6, true, false);
+    ssd1306_draw_string(&ssd, "Bem-vindo", 30, 10);
+    ssd1306_draw_string(&ssd, "ao", 60, 25);
+    ssd1306_draw_string(&ssd, "RU CONTROLLER!", 12, 40);
     ssd1306_send_data(&ssd);
 
     semEntrada = xSemaphoreCreateCounting(25, 0);
