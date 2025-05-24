@@ -118,12 +118,12 @@ void vTaskEntrada(void *param){
             if(contador < MAX_PESSOAS){
                 contador++;
                 gpio_put(LED_G, 1);
-                beep(1, 200);
+                beep(1, 400);   //Beep longo ao entrar
                 gpio_put(LED_G, 0);
-                atualizar_display("Entrada realizada");
-            } else {
+                atualizar_display("Entrada feita!");
+            }else{
                 atualizar_display("Capacidade cheia!");
-                beep(1, 100);
+                beep(1, 100);   //Beep curto ao tentar entrar com o sistema cheio
             }
             vTaskDelay(pdMS_TO_TICKS(300));
         }
@@ -135,15 +135,16 @@ void vTaskSaida(void *param){
         if(xSemaphoreTake(semSaida, portMAX_DELAY) == pdTRUE){
             if(contador > 0){
                 contador--;
-                for(int i = 0; i < 3; i++){
+                for(int i = 0; i < 3; i++){ //Beep curto 3 vezes ao sair
                     gpio_put(LED_R, 1);
                     beep(1, 100);
                     gpio_put(LED_R, 0);
                     vTaskDelay(pdMS_TO_TICKS(100));
                 }
-                atualizar_display("Saida registrada");
-            } else {
-                atualizar_display("Ninguem no local!");
+                atualizar_display("Saida feita!");
+            }else{
+                atualizar_display("Local vazio!");
+                beep(1, 100);   //Beep curto ao tentar sair com o sistema vazio
             }
             vTaskDelay(pdMS_TO_TICKS(300));
         }
@@ -155,10 +156,8 @@ void vTaskReset(void *param){
         if(xSemaphoreTake(semReset, portMAX_DELAY) == pdTRUE){
             contador = 0;
             gpio_put(LED_B, 1);
-            pwm_set_enabled(buzzer_slice, true);
-            atualizar_display("Reset realizado");
-            vTaskDelay(pdMS_TO_TICKS(2000));
-            pwm_set_enabled(buzzer_slice, false);
+            beep(2, 300);
+            atualizar_display("Reset feito!");
             gpio_put(LED_B, 0);
         }
     }
