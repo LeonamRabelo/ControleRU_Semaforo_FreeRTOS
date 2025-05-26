@@ -26,9 +26,9 @@
 #define IS_RGBW false
 #define ENDERECO_DISPLAY 0x3C       //Endereco I2C do display
 
-SemaphoreHandle_t semContagem;      //Semaforo de contagem para controlar o acesso ao contador
-SemaphoreHandle_t semReset;         //Semaforo binary para controlar o acesso ao reset
-SemaphoreHandle_t mutexDisplay;     //Mutex para controlar o acesso ao display
+SemaphoreHandle_t xSemContagem;      //Semaforo de contagem para controlar o acesso ao contador
+SemaphoreHandle_t xSemReset;         //Semaforo binary para controlar o acesso ao reset
+SemaphoreHandle_t xMutexDisplay;     //Mutex para controlar o acesso ao display
 
 volatile uint8_t contador = 0;      //Contador de pessoas no restaurante, variavel global
 uint buzzer_slice;                  //Slice do buzzer
@@ -75,7 +75,7 @@ void init_perifericos(){
 
 //Funcao para atualizar o display
 void atualizar_display(const char* msg){
-    if(xSemaphoreTake(mutexDisplay, pdMS_TO_TICKS(200))){    //Tenta pegar o mutex
+    if(xSemaphoreTake(xMutexDisplay, pdMS_TO_TICKS(200))){    //Tenta pegar o mutex
         ssd1306_fill(&ssd, false);  //Limpa o display
         //Borda
         ssd1306_rect(&ssd, 0, 0, 128, 64, true, false);
@@ -88,7 +88,7 @@ void atualizar_display(const char* msg){
         ssd1306_draw_string(&ssd, msg, 10, 10);     //Desenha a string
         ssd1306_draw_string(&ssd, buffer, 10, 30);  //Desenha a string
         ssd1306_send_data(&ssd);                    //Envia os dados para o display
-        xSemaphoreGive(mutexDisplay);               //Libera o mutex
+        xSemaphoreGive(xMutexDisplay);               //Libera o mutex
     }
 }
 
@@ -118,7 +118,7 @@ bool debounce_botao(uint gpio){
 void gpio_irq_handler(uint gpio, uint32_t events){
     BaseType_t xHigherPriorityTaskWoken = pdFALSE;  
     if (gpio == BOTAO_JOYSTICK && debounce_botao(BOTAO_JOYSTICK)){
-        xSemaphoreGiveFromISR(semReset, &xHigherPriorityTaskWoken);
+        xSemaphoreGiveFromISR(xSemReset, &xHigherPriorityTaskWoken);
     }
     portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 }
@@ -129,7 +129,7 @@ void vTaskEntrada(void *param){
     while(1){
         bool estado_atual = gpio_get(BOTAO_A);  //Le o estado do botao
         if(!estado_atual && ultimo_estado){ //Pressionado
-            if(contador < MAX_PESSOAS && xSemaphoreTake(semContagem, 0) == pdTRUE){ //Verifica se o local nao esta cheio
+            if(contador < MAX_PESSOAS && xSemaphoreTake(xSemContagem, 0) == pdTRUE){ //Verifica se o local nao esta cheio
                 contador++;                                             //Incrementa o contador
                 gpio_put(LED_G, 1);                                     //Liga o led verde
                 beep(1, 400);                                           //Toca o buzzer com um beep de 400ms (mais longo)
@@ -154,7 +154,7 @@ void vTaskSaida(void *param){
         if (!estado_atual && ultimo_estado){ // Pressionado
             if(contador > 0){               //Verifica se o local nao esta vazio
                 contador--;                 //Decrementa o contador
-                xSemaphoreGive(semContagem);        //Libera espaço no semaforo de contagem
+                xSemaphoreGive(xSemContagem);        //Libera espaço no semaforo de contagem
                 for(int i = 0; i < 3; i++){         //Toca o buzzer 3 vezes de 100ms
                     gpio_put(LED_R, 1);             //Liga o led vermelho
                     beep(1, 100);                   //Toca o buzzer
@@ -176,9 +176,9 @@ void vTaskSaida(void *param){
 //Tarefa para o botao de reset do sistema (Joystick)
 void vTaskReset(void *param){
     while(1){
-        if(xSemaphoreTake(semReset, portMAX_DELAY) == pdTRUE){  //Verifica se o botao foi pressionado
+        if(xSemaphoreTake(xSemReset, portMAX_DELAY) == pdTRUE){  //Verifica se o botao foi pressionado
             while(contador > 0){    //Enquanto o contador for maior que 0
-                xSemaphoreGive(semContagem);    //Libera o semaforo de contagem
+                xSemaphoreGive(xSemContagem);    //Libera o semaforo de contagem
                 contador--;                     //Decrementa o contador
             }
         gpio_put(LED_B, 1); //Liga o led azul
@@ -230,9 +230,9 @@ int main(){
     ssd1306_draw_string(&ssd, "RU CONTROLLER!", 12, 40);
     ssd1306_send_data(&ssd);
 
-    semContagem = xSemaphoreCreateCounting(MAX_PESSOAS, MAX_PESSOAS);    //Cria o semaforo de contagem
-    semReset = xSemaphoreCreateBinary();                                 //Cria o semaforo binario para reset
-    mutexDisplay = xSemaphoreCreateMutex();                              //Cria o mutex para o display
+    xSemContagem = xSemaphoreCreateCounting(MAX_PESSOAS, MAX_PESSOAS);    //Cria o semaforo de contagem
+    xSemReset = xSemaphoreCreateBinary();                                 //Cria o semaforo binario para reset
+    xMutexDisplay = xSemaphoreCreateMutex();                              //Cria o mutex para o display
 
     gpio_set_irq_enabled_with_callback(BOTAO_JOYSTICK, GPIO_IRQ_EDGE_FALL, true, &gpio_irq_handler);    //Habilita a interrupcao do botao do joystick
 
